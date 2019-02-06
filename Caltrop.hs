@@ -8,7 +8,10 @@ import qualified Data.List as List
 import qualified ErrUtils
 import qualified GhcPlugins
 import qualified HsSyn
+import qualified Lexer
 import qualified MonadUtils
+import qualified Parser
+import qualified StringBuffer
 
 plugin :: GhcPlugins.Plugin
 plugin = GhcPlugins.defaultPlugin
@@ -89,3 +92,20 @@ caltrop _ modSummary hsParsedModule = do
         x : xs -> foldr GhcPlugins.combineSrcSpans x xs
       )
     $ GhcPlugins.text "imports not sorted"
+
+  -- This shows how to use the GHC library to parse an expression. I would like
+  -- to be able to use arbitrary expressions as suggestions like HLint. (For
+  -- example, `\ x -> x` should be `id`.) However doing so will require being
+  -- able to tell if two expressions are the same other than their variable
+  -- names. <https://en.wikipedia.org/wiki/Lambda_calculus#Alpha_equivalence>
+  let
+    result
+      = Lexer.unP Parser.parseExpression
+      . Lexer.mkPState dynFlags (StringBuffer.stringToStringBuffer "\\ x -> x")
+      $ GhcPlugins.mkRealSrcLoc (GhcPlugins.mkFastString "") 0 0
+  case result of
+    Lexer.POk _ expression -> MonadUtils.liftIO
+      . putStrLn
+      . GhcPlugins.showSDocUnsafe
+      $ GhcPlugins.ppr expression
+    _ -> MonadUtils.liftIO $ putStrLn "Failed to parse expression :("
